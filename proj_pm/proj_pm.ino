@@ -1,4 +1,4 @@
-  #include <IRremote.hpp>
+#include <IRremote.hpp>
 #include <EEPROM.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -38,8 +38,9 @@ void setup() {
   pinMode(STEPPER_PIN_3, OUTPUT);
   pinMode(STEPPER_PIN_4, OUTPUT);
   IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
-  // close the curtains if they are open (go to default state - closed)
+  // search the I2C devices addresses
   searchAddress();
+  // check on EEPROM curtain state -> if open, close it (default state)
   initRoutine();
   isOpen = 0;
   step_number = 0;
@@ -60,6 +61,7 @@ void loop() {
   changeStateCurtain();
 }
 
+// function to execute one step on the motor (cycle the HIGH signal through the input pins)
 void OneStep(bool dir){
   if(dir) {
     switch(step_number){
@@ -121,6 +123,7 @@ void OneStep(bool dir){
   }
 }
 
+// set all pins on LOW (to avoid motor overheating)
 void disableMotor() {
   digitalWrite(STEPPER_PIN_1, LOW);
   digitalWrite(STEPPER_PIN_2, LOW);
@@ -131,7 +134,7 @@ void disableMotor() {
 void initRoutine() {
   byte eepromIsOpen = EEPROM.read(0);
   if (eepromIsOpen)
-    rotateCW(FULL_STROKE_STEPS);
+    rotateCCW(FULL_STROKE_STEPS);
 }
 
 void catchRemoteCommand() {
@@ -180,6 +183,7 @@ void catchRemoteCommand() {
   }
 }
 
+// function to rotate the motor clockwise a number of steps
 void rotateCW(int steps) {
   for (int i = 0; i < steps; i++) {
     OneStep(false);
@@ -190,11 +194,13 @@ void rotateCW(int steps) {
   disableMotor();
 }
 
+// function to rotate the motor counter-clockwise a number of steps
 void rotateCCW(int steps) {
   for (int i = 0; i < steps; i++) {
     OneStep(true);
     delay(5);
   }
+  // we are sure that the curtains are closed only if the number of steps is FULL_STROKE_STEPS
   if (steps == FULL_STROKE_STEPS) {
     isOpen = 0;
     EEPROM.update(0, 0); 
@@ -202,6 +208,7 @@ void rotateCCW(int steps) {
   disableMotor();
 }
 
+// change the curtain state accordingly to the lightLevel shown by the light sensor, if needed
 void changeStateCurtain() {
   if (mode == AUTOMATIC_MODE) {
     float lightLevel = lightMeter.readLightLevel();
@@ -214,10 +221,10 @@ void changeStateCurtain() {
       lcd.print(" lx");  
       lastTimeLCDUpdated = millis();
     }
-    if(lightLevel < 150 && isOpen == 1) {
+    if(lightLevel < 50 && isOpen == 1) {
       rotateCCW(FULL_STROKE_STEPS);
     }
-    else if (lightLevel > 150 && isOpen == 0) {
+    else if (lightLevel > 50 && isOpen == 0) {
       rotateCW(FULL_STROKE_STEPS);
     }
   } 
@@ -237,6 +244,7 @@ byte searchAddress() {
   for (byte i = 8; i < 120; i++)
   {
     Wire.beginTransmission (i);
+    // there is a I2C device at the endpoint of that 'i' address
     if (Wire.endTransmission () == 0)
       {
       Serial.print ("Found address: ");
@@ -246,9 +254,9 @@ byte searchAddress() {
       addr = i;
       Serial.println (")");
       count++;
-      delay (1);  // maybe unneeded?
-      } // end of good response
-  } // end of for loop
+      delay (1);
+      }
+  }
   Serial.println ("Done.");
   Serial.print ("Found ");
   Serial.print (count, DEC);
