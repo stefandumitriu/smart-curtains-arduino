@@ -1,5 +1,4 @@
 #include <IRremote.hpp>
-#include <EEPROM.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <BH1750.h>
@@ -8,6 +7,7 @@
 #define MANUAL_MODE 1
 #define SETUP_MODE 2
 #define IR_RECEIVE_PIN 6
+#define MICROSWITCH_PIN 7
 #define STEPPER_PIN_1 9
 #define STEPPER_PIN_2 10
 #define STEPPER_PIN_3 11
@@ -19,9 +19,9 @@
 int step_number;
 int mode;
 int isOpen;
-int sensorValue;
 long lastTimeLCDUpdated;
 int lastTimeRemotePressed;
+int stepsToFullOpen;
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 BH1750 lightMeter(0x23);
@@ -33,19 +33,18 @@ void setup() {
   lcd.clear();
   lcd.backlight();
   lcd.setCursor(0,0);
-  pinMode(LIGHT_SENSOR_PIN, INPUT_PULLUP);
+  pinMode(LIGHT_SENSOR_PIN, INPUT);
   pinMode(STEPPER_PIN_1, OUTPUT);
   pinMode(STEPPER_PIN_2, OUTPUT);
   pinMode(STEPPER_PIN_3, OUTPUT);
   pinMode(STEPPER_PIN_4, OUTPUT);
+  pinMode(MICROSWITCH_PIN, INPUT_PULLUP);
   IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK);
   // search the I2C devices addresses
   searchAddress();
-  // check on EEPROM curtain state -> if open, close it (default state)
+  // bring curtain to closed position (default)
   initRoutine();
-  isOpen = 0;
   step_number = 0;
-  sensorValue = 1;
   lastTimeLCDUpdated = 0;
   lastTimeRemotePressed = 0;
   mode = AUTOMATIC_MODE;
@@ -134,9 +133,7 @@ void disableMotor() {
 }
 
 void initRoutine() {
-  byte eepromIsOpen = EEPROM.read(0);
-  if (eepromIsOpen)
-    rotateCW(FULL_STROKE_STEPS);
+  rotateCCW(FULL_STROKE_STEPS);
 }
 
 void catchRemoteCommand() {
@@ -153,12 +150,12 @@ void catchRemoteCommand() {
       } else if (mode == MANUAL_MODE && IrReceiver.decodedIRData.command == 8) {
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print("CCW rotation");
+        lcd.print("Going Down");
         rotateCCW(ONE_ROTATION_STEPS);
       } else if (mode == MANUAL_MODE && IrReceiver.decodedIRData.command == 90) {
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print("CW rotation");
+        lcd.print("Going up");
         rotateCW(ONE_ROTATION_STEPS);
       } else if (mode == SETUP_MODE && IrReceiver.decodedIRData.command == 69) {
         lcd.clear();
@@ -193,25 +190,32 @@ void catchRemoteCommand() {
 
 // function to rotate the motor clockwise a number of steps
 void rotateCW(int steps) {
-  for (int i = 0; i < steps; i++) {
-    OneStep(false);
-    delay(2);
-  }
-  isOpen = 1;
-  EEPROM.update(0, 1);
-  disableMotor();
-}
-
-// function to rotate the motor counter-clockwise a number of steps
-void rotateCCW(int steps) {
+  if (steps > stepsToFullOpen)
+    steps = stepsToFullOpen;
   for (int i = 0; i < steps; i++) {
     OneStep(true);
     delay(2);
   }
-  // we are sure that the curtains are closed only if the number of steps is FULL_STROKE_STEPS
-  if (steps == FULL_STROKE_STEPS) {
+  disableMotor();
+  stepsToFullOpen -= steps;
+  if (stepsToFullOpen == 0) {
+    isOpen = 1;
+  }
+}
+
+// function to rotate the motor counter-clockwise a number of steps
+void rotateCCW(int steps) {
+  // rotate number of steps given, or until reaching the limit
+  for (int i = 0; i < steps && digitalRead(MICROSWITCH_PIN) == HIGH; i++) {
+    OneStep(false);
+    delay(2);
+  }
+  stepsToFullOpen += steps;
+  // we are sure that the curtains are closed only if the number of steps is FULL_STROKE_STEPS or that the switch is clicked
+  if (digitalRead(MICROSWITCH_PIN) == LOW || steps == FULL_STROKE_STEPS) {
     isOpen = 0;
-    EEPROM.update(0, 0); 
+    stepsToFullOpen = FULL_STROKE_STEPS;
+    Serial.println("Microswitch Clicked");
   }
   disableMotor();
 }
@@ -229,15 +233,18 @@ void changeStateCurtain() {
       lcd.print(" lx");  
       lastTimeLCDUpdated = millis();
     }
+    // if the curtain is closed and the light is above threshold, open
     if(lightLevel > 30 && isOpen == 0) {
-      rotateCCW(FULL_STROKE_STEPS);
-    }
-    else if (lightLevel < 30 && isOpen == 1) {
       rotateCW(FULL_STROKE_STEPS);
+    }
+    // else if it is below and it is open, close
+    else if (lightLevel < 30 && isOpen == 1) {
+      rotateCCW(FULL_STROKE_STEPS);
     }
   } 
 }
 
+// function to get the addresses of the I2C devices connected
 byte searchAddress() {
   byte addr = 0;
   while (!Serial);
