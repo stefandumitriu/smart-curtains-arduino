@@ -13,7 +13,7 @@
 #define STEPPER_PIN_3 11
 #define STEPPER_PIN_4 12
 #define ONE_ROTATION_STEPS 512
-#define FULL_STROKE_STEPS 4096
+#define FULL_STROKE_STEPS 10000
 #define LIGHT_SENSOR_PIN 3
 
 int step_number;
@@ -21,6 +21,7 @@ int mode;
 int isOpen;
 int sensorValue;
 long lastTimeLCDUpdated;
+int lastTimeRemotePressed;
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 BH1750 lightMeter(0x23);
@@ -46,6 +47,7 @@ void setup() {
   step_number = 0;
   sensorValue = 1;
   lastTimeLCDUpdated = 0;
+  lastTimeRemotePressed = 0;
   mode = AUTOMATIC_MODE;
   if (lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE)) {
     Serial.println(F("BH1750 Advanced begin"));
@@ -134,11 +136,13 @@ void disableMotor() {
 void initRoutine() {
   byte eepromIsOpen = EEPROM.read(0);
   if (eepromIsOpen)
-    rotateCCW(FULL_STROKE_STEPS);
+    rotateCW(FULL_STROKE_STEPS);
 }
 
 void catchRemoteCommand() {
   if (IrReceiver.decode()) {
+    // debouncing for the remote (wait between presses 0.5s, not recording the same command twice)
+    if (millis() - lastTimeRemotePressed >= 500) {
       if (mode != SETUP_MODE && IrReceiver.decodedIRData.command == 22) {
         lcd.clear();
         lcd.setCursor(0, 0);
@@ -173,12 +177,16 @@ void catchRemoteCommand() {
       } else if (mode == SETUP_MODE && IrReceiver.decodedIRData.command == 22) {
         lcd.clear();
         lcd.setCursor(0, 0);
-        lcd.print("Already in setup"); 
+        lcd.print("Already in setup");
+        lcd.setCursor(0, 1);
+        lcd.print("1-auto;2-manual");
       } else {
         lcd.clear();
         lcd.setCursor(0, 0);
         lcd.print("CMD not found");
       }
+      lastTimeRemotePressed = millis();
+    }
       IrReceiver.resume();
   }
 }
@@ -187,7 +195,7 @@ void catchRemoteCommand() {
 void rotateCW(int steps) {
   for (int i = 0; i < steps; i++) {
     OneStep(false);
-    delay(5);
+    delay(2);
   }
   isOpen = 1;
   EEPROM.update(0, 1);
@@ -198,7 +206,7 @@ void rotateCW(int steps) {
 void rotateCCW(int steps) {
   for (int i = 0; i < steps; i++) {
     OneStep(true);
-    delay(5);
+    delay(2);
   }
   // we are sure that the curtains are closed only if the number of steps is FULL_STROKE_STEPS
   if (steps == FULL_STROKE_STEPS) {
@@ -221,10 +229,10 @@ void changeStateCurtain() {
       lcd.print(" lx");  
       lastTimeLCDUpdated = millis();
     }
-    if(lightLevel < 50 && isOpen == 1) {
+    if(lightLevel > 30 && isOpen == 0) {
       rotateCCW(FULL_STROKE_STEPS);
     }
-    else if (lightLevel > 50 && isOpen == 0) {
+    else if (lightLevel < 30 && isOpen == 1) {
       rotateCW(FULL_STROKE_STEPS);
     }
   } 
@@ -232,11 +240,7 @@ void changeStateCurtain() {
 
 byte searchAddress() {
   byte addr = 0;
-  while (!Serial) 
-  {
-  }
-
-  Serial.println ();
+  while (!Serial);
   Serial.println ("I2C scanner. Scanning ...");
   byte count = 0;
   
