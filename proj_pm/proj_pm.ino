@@ -13,7 +13,7 @@
 #define STEPPER_PIN_3 11
 #define STEPPER_PIN_4 12
 #define ONE_ROTATION_STEPS 512
-#define FULL_STROKE_STEPS 10000
+#define FULL_STROKE_STEPS 9000
 #define LIGHT_SENSOR_PIN 3
 
 int step_number;
@@ -153,10 +153,17 @@ void catchRemoteCommand() {
         lcd.print("Going Down");
         rotateCCW(ONE_ROTATION_STEPS);
       } else if (mode == MANUAL_MODE && IrReceiver.decodedIRData.command == 90) {
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("Going up");
-        rotateCW(ONE_ROTATION_STEPS);
+        if (stepsToFullOpen == 0) {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Already max. up");
+        }
+        else {
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Going up");
+          rotateCW(ONE_ROTATION_STEPS); 
+        }
       } else if (mode == SETUP_MODE && IrReceiver.decodedIRData.command == 69) {
         lcd.clear();
         lcd.setCursor(0, 0);
@@ -215,7 +222,9 @@ void rotateCCW(int steps) {
   if (digitalRead(MICROSWITCH_PIN) == LOW || steps == FULL_STROKE_STEPS) {
     isOpen = 0;
     stepsToFullOpen = FULL_STROKE_STEPS;
-    Serial.println("Microswitch Clicked");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Switch Clicked");
   }
   disableMotor();
 }
