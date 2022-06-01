@@ -55,6 +55,7 @@ void setup() {
     Serial.println(F("Error initialising BH1750"));
   }
   lcd.print("Setup done!");
+  lastTimeLCDUpdated = millis();
 }
 
 void loop() {
@@ -146,23 +147,27 @@ void catchRemoteCommand() {
         lcd.print("1 - auto");
         lcd.setCursor(0, 1);
         lcd.print("2 - manual");
+        lastTimeLCDUpdated = millis();
         mode = SETUP_MODE;  
       } else if (mode == MANUAL_MODE && IrReceiver.decodedIRData.command == 8) {
         lcd.clear();
         lcd.setCursor(0, 0);
         lcd.print("Going Down");
+        lastTimeLCDUpdated = millis();
         rotateCCW(ONE_ROTATION_STEPS);
       } else if (mode == MANUAL_MODE && IrReceiver.decodedIRData.command == 90) {
         if (stepsToFullOpen == 0) {
           lcd.clear();
           lcd.setCursor(0, 0);
           lcd.print("Already max. up");
+          lastTimeLCDUpdated = millis();
         }
         else {
           lcd.clear();
           lcd.setCursor(0, 0);
           lcd.print("Going up");
-          rotateCW(ONE_ROTATION_STEPS); 
+          lastTimeLCDUpdated = millis();
+          rotateCW(ONE_ROTATION_STEPS);
         }
       } else if (mode == SETUP_MODE && IrReceiver.decodedIRData.command == 69) {
         lcd.clear();
@@ -170,6 +175,7 @@ void catchRemoteCommand() {
         lcd.print("Enabled");
         lcd.setCursor(0, 1);
         lcd.print("Auto Mode");
+        lastTimeLCDUpdated = millis();
         mode = AUTOMATIC_MODE;
       } else if (mode == SETUP_MODE && IrReceiver.decodedIRData.command == 70) {
         lcd.clear();
@@ -177,6 +183,7 @@ void catchRemoteCommand() {
         lcd.print("Enabled");
         lcd.setCursor(0, 1);
         lcd.print("Manual Mode");
+        lastTimeLCDUpdated = millis();
         mode = MANUAL_MODE;
       } else if (mode == SETUP_MODE && IrReceiver.decodedIRData.command == 22) {
         lcd.clear();
@@ -184,10 +191,12 @@ void catchRemoteCommand() {
         lcd.print("Already in setup");
         lcd.setCursor(0, 1);
         lcd.print("1-auto;2-manual");
+        lastTimeLCDUpdated = millis();
       } else {
         lcd.clear();
         lcd.setCursor(0, 0);
         lcd.print("CMD not found");
+        lastTimeLCDUpdated = millis();
       }
       lastTimeRemotePressed = millis();
     }
@@ -205,9 +214,7 @@ void rotateCW(int steps) {
   }
   disableMotor();
   stepsToFullOpen -= steps;
-  if (stepsToFullOpen == 0) {
-    isOpen = 1;
-  }
+  isOpen = 1;
 }
 
 // function to rotate the motor counter-clockwise a number of steps
@@ -225,6 +232,7 @@ void rotateCCW(int steps) {
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("Switch Clicked");
+    lastTimeLCDUpdated = millis();
   }
   disableMotor();
 }
